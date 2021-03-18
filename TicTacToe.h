@@ -9,29 +9,32 @@
 #define FIRST_MOVE_SERVER 1
 #define FIRST_MOVE_CLIENT 2
 
-int turn()
-{
-    // returns 1 or 2, 1 indicates -> server plays first, 2 -> client plays first
-    return(int((rand()%2 + 1)));
-}
+#define print std::cout
+#define newline std::endl
+
+using namespace std;
 
 void displayBoard(vector <vector<char>> board)
 {
+    print<<newline<<newline<<newline;
+
 	for (int i=0; i<3; i++)
 	{
-		cout<<"  ";
+		print<<"  ";
 		for(int j=0; j<3; j++)
 		{
-			cout<<"  " <<  board[i][j]<<"  ";
+			print<<"  " <<  board[i][j]<<"  ";
 			if(j!= 2)
-				cout<<"|";
+				print<<"|";
 		}
 		
 		//print the underscores
 		if(i!= 2)	
-		cout<<endl<<"  -----+-----+-----";
-		cout<<endl;
+		print<<newline<<"  -----+-----+-----";
+		print<<newline;
     }
+
+    print<<newline;
 }
 
 char checkResult(vector <vector<char>> board)
@@ -53,12 +56,12 @@ char checkResult(vector <vector<char>> board)
     }
     
     // rows
-    
+
     for(int i=0; i<3; i++)
     {
         char firstRowElement = board[i][0];
 
-        if(firstRowElement == '0')
+        if(firstRowElement == '-')
             break;
         int j;
         for(j=1; j<3; j++)
@@ -78,7 +81,7 @@ char checkResult(vector <vector<char>> board)
     {
         char firstColumnElement = board[0][i];
 
-        if(firstColumnElement == '0')
+        if(firstColumnElement == '-')
             break;
         int j;
         for(j=1; j<3; j++)
@@ -96,7 +99,7 @@ char checkResult(vector <vector<char>> board)
 
     char firstDiagonalElement = board[0][0];
 
-    if(firstDiagonalElement != '0')
+    if(firstDiagonalElement != '-')
     {
         int i;
         for (i=1; i<3; i++)
@@ -111,7 +114,7 @@ char checkResult(vector <vector<char>> board)
 
     char secondDiagonalElement = board[0][2];
 
-    if(secondDiagonalElement != '0')
+    if(secondDiagonalElement != '-')
     {
         int i;
         for(i=1; i<3; i++)
@@ -130,9 +133,24 @@ char checkResult(vector <vector<char>> board)
     return 'N';
 }
 
-
-
 void sendTurn(int turn);
 
+void startGame(vector <vector<char>> &board)
+{
+    int firstMove = int((rand()%2 + 1));
+
+    print<<newline<<newline;
+
+    if(firstMove == FIRST_MOVE_SERVER)
+        print<<"You are playing first! Your character is X."<< newline;
+    else
+        print<<"You are playing second! Your character is O."<< newline;
+
+    print<<"To play, you must enter the position number (1-9) of the location where you want to place your piece."<< newline
+         <<"The numbering is as shown in the following diagram: "<<newline<<newline;
+
+    displayBoard({{'1','2','3'}, {'4','5','6'}, {'7','8','9'}});
+
+}
 
 #endif
