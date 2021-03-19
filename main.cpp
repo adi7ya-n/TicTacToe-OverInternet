@@ -1,7 +1,5 @@
 #include "TicTacToe.h"
 
-
-
 int main()
 {
     srand(time(0)); // seed set to time(-) for rand()
@@ -15,12 +13,5 @@ int main()
     // setup server, wait for client to join the game
 
     // client has connected, run rand() to see who plays first
-    displayBoard(board);
-
     startGame(board);
-        
-
-
-    
-
 }
