@@ -1,4 +1,4 @@
-#include "TicTacToe.h"
+#include "../Lib/TicTacToe.h"
 
 int main()
 {

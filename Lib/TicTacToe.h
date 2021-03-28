@@ -16,12 +16,19 @@ namespace c_libs
     #include <sys/types.h> 
     #include <sys/socket.h>
     #include <netinet/in.h>
+    #include <netdb.h>
 }
 
 #define PORT_NUMBER 9518
 
 #define FIRST_MOVE_SERVER 1
 #define FIRST_MOVE_CLIENT 2
+
+#define CLIENT_GOES_SECOND 2
+#define CLIENT_GOES_FIRST 1
+
+#define PLAYER_1 1
+#define PLAYER_2 2
 
 #define VALID_LOCATION 0
 #define INVALID_LOCATION 1
@@ -38,7 +45,7 @@ char playerCharacter = '-'; // Will be set depending on who goes first.
 int sockfd, acceptfd;
 
 const char * gameOver = "E";
-
+const char* message;
 
 using namespace std;
 using namespace c_libs;
@@ -85,7 +92,7 @@ char checkResult(vector <vector<char>> &board)
     {
         for(int j=0; j<3; j++)
         {
-            if(board[i][j] == '0')
+            if(board[i][j] == '-')
                 fullBoard = false; // 0 has been found, set fullBoard = false;
         }
     }
@@ -277,7 +284,7 @@ void readMove(vector <vector<char>> &board)
         
 }
 
-void sendMove(vector <vector<char>> &board)
+void sendMove(vector <vector<char>> &board, int fd)
 {
     readMove(board);
     char* message = new char[9];
@@ -290,16 +297,16 @@ void sendMove(vector <vector<char>> &board)
         }
     }
 
-    if(write(acceptfd, message, 9) < 0)
+    if(write(fd, message, 9) < 0)
         error("WAS NOT ABLE TO SEND MOVE TO CLIENT.");
     
     delete message;
 }
 
-void receiveMove(vector <vector<char>> &board)
+void receiveMove(vector <vector<char>> &board, int fd)
 {
     char buffer[9];
-    if(c_libs::read(acceptfd,buffer,9) < 0)
+    if(c_libs::read(fd,buffer,9) < 0)
         error("ERROR RECEIVING MOVE FROM CLIENT");
 
     // update the board
@@ -311,6 +318,29 @@ void receiveMove(vector <vector<char>> &board)
         colNum = i - 3*rowNum;
         board[rowNum][colNum] = buffer[i];
     }
+
+    print<<newline<<newline<<"Opponent has made their move. Here is the updated board!"<<newline;
+    displayBoard(board);
+}
+
+void displayRules(int firstMove)
+{
+    if(firstMove == PLAYER_1)
+    {
+        print<<"You are playing first! Your character is X."<< newline;
+        playerCharacter = 'X';
+        message = "2";
+    }
+    else
+    {
+        print<<"You are playing second! Your character is O."<< newline;
+        playerCharacter = 'O';
+        message = "1";
+    }
+    print<<"To play, you must enter the position number (1-9) of the location where you want to place your piece."<< newline
+        <<"The numbering is as shown in the following diagram: "<<newline<<newline;
+
+    displayBoard({{'1','2','3'}, {'4','5','6'}, {'7','8','9'}});
 }
 
 void startGame(vector <vector<char>> &board)
@@ -318,8 +348,6 @@ void startGame(vector <vector<char>> &board)
     int firstMove = int((rand()%2 + 1));
     
     print<<newline<<newline;
-    
-    displayBoard({{'1','2','3'}, {'4','5','6'}, {'7','8','9'}});
     
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serv_addr, cli_addr;
@@ -349,44 +377,31 @@ void startGame(vector <vector<char>> &board)
 
         print<<"Connected to player!"<<newline;
 
-        const char* message;
-
-        if(firstMove == FIRST_MOVE_SERVER)
-        {
-            print<<"You are playing first! Your character is X."<< newline;
-            playerCharacter = 'X';
-            message = "X";
-        }
-        else
-        {
-            print<<"You are playing second! Your character is O."<< newline;
-            playerCharacter = 'O';
-            message = "O";
-        }
-        print<<"To play, you must enter the position number (1-9) of the location where you want to place your piece."<< newline
-            <<"The numbering is as shown in the following diagram: "<<newline<<newline;
-
+        displayRules(firstMove);
         // send information of first move to the client.
     
         char buffer[9];
 
         if(write(acceptfd, message, 1) < 0)
             error("ERROR IN SENDING FIRST MOVE TO CLIENT.");
+
         
-        if(firstMove == FIRST_MOVE_SERVER)
+        print<<"My first move is: "<<firstMove<<newline;
+        
+        if(firstMove == FIRST_MOVE_CLIENT)
         {
             while(checkResult(board) == 'N') // no result yet
             {
-                receiveMove(board);
-                sendMove(board);
+                receiveMove(board, acceptfd);
+                sendMove(board, acceptfd);
             }
         }
         else
         {
             while(checkResult(board) == 'N') // no result yet
             {
-                sendMove(board);
-                receiveMove(board);
+                sendMove(board, acceptfd);
+                receiveMove(board, acceptfd);
             }
         }
 
@@ -441,6 +456,116 @@ void startGame(vector <vector<char>> &board)
             }
         }
     }
+}
+
+void joinGame(vector <vector<char>> &board)
+{
+    struct sockaddr_in serv_addr;
+    struct hostent* server;
+    char buffer[9];
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if(sockfd < 0)
+        error("ERROR OPENING SOCKET ON CLIENT");
+    
+    server = gethostbyname("localhost");
+
+    if(server == NULL)
+        error("COULD NOT FIND THE HOST SERVER");
+    
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(PORT_NUMBER);
+
+    while(1)
+    {
+        if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+            error("ERROR connecting to Host");
+
+        if(c_libs::read(sockfd, buffer, 1) < 0)
+            error("ERROR reading the first move from the host");
+        
+        int firstMove = int(buffer[0] - '0');
+
+
+        bzero(buffer, 9);
+
+        print<<"Connected to server!"<<newline;
+
+        displayRules(firstMove);
+
+        print<<"My first move is: "<<firstMove<<newline;
+
+        // if client gets 2, then receive the move
+
+        if(firstMove == CLIENT_GOES_FIRST)
+        {
+            while(checkResult(board) == 'N')
+            {
+                sendMove(board, sockfd);
+                receiveMove(board, sockfd);
+            }
+        }
+        else
+        {
+            while(checkResult(board) == 'N')
+            {
+                receiveMove(board, sockfd);
+                sendMove(board, sockfd);
+            }   
+        }
+
+        char result = checkResult(board);
+        if(result == playerCharacter)
+            print<<"Congrats! You won!! "<<newline<<newline;
+        else if(result == 'D')
+            print<<"Draw match. "<<newline<<newline;
+        else
+            print<<"You lost :( "<<newline<<newline;
+
+        // indicate if client wants to play another game
+
+        print<<"Do you want to play another game? Press y or n to confirm: ";
+
+        char decision;
+        input>>decision;
+
+        while(decision != 'y' and decision != 'n' and decision != 'Y' and decision != 'N')
+        {
+            input.clear();
+            input.ignore(std::numeric_limits<streamsize>::max(), '\n');
+            print<<"Invalid decision. Please type y or n:  ";
+            input>>decision;
+        }
+        buffer[0] = tolower(decision);
+
+        if(write(sockfd, buffer, 1) < 0)
+            error("ERROR SENDING REMATCH DECISION TO THE HOST");
+        
+        close(sockfd); // close connection
+
+        if(decision == 'y' or decision == 'Y')
+        {
+            // client wanted to play, check what the server wants to do
+            if(c_libs::read(sockfd, buffer, 1) < 0)
+                error("ERROR READING THE SERVER DECISION");
+            
+            if(buffer[0] == 'E')
+            {
+                print<<"Server does not want to play another game. Exiting now"<<newline;
+                close(sockfd);
+                exit(0);
+            }
+            else
+            {
+                print<<"Server wants to play another game. Continuing..."<<newline;
+                close(sockfd);
+            }
+        }
+    }
+
 }
 
 #endif
