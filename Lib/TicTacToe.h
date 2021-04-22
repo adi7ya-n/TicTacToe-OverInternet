@@ -37,11 +37,16 @@ namespace c_libs
 #define MOVE_CONFIRMED 'y'
 #define MOVE_NOT_CONFIRMED 'n'
 
+#define GAME_OVER 1
+#define NO_RESULT 0
+
 #define print std::cout
 #define newline std::endl
 #define input std::cin
 
 char playerCharacter = '-'; // Will be set depending on who goes first.
+char opponentCharacter = '-';
+char gameResult = 'N';
 int sockfd, acceptfd;
 
 const char * gameOver = "E";
@@ -86,6 +91,7 @@ char checkResult(vector <vector<char>> &board)
 
     // check if the board is full, ie find the first occurence of 0
 
+    displayBoard(board);
     bool fullBoard = true; // assume board has no 0's left.
 
     for(int i=0; i<3; i++)
@@ -104,7 +110,14 @@ char checkResult(vector <vector<char>> &board)
         char firstRowElement = board[i][0];
 
         if(firstRowElement == '-')
-            break;
+        {
+            if(i != 2)
+            {
+                continue;
+            }    
+            else
+                break;
+        }    
         int j;
         for(j=1; j<3; j++)
         {
@@ -117,6 +130,8 @@ char checkResult(vector <vector<char>> &board)
             return firstRowElement;
     }
 
+    // print<<"No winner along rows"<<newline;
+
     // columns
 
     for(int i=0; i<3; i++)
@@ -124,10 +139,18 @@ char checkResult(vector <vector<char>> &board)
         char firstColumnElement = board[0][i];
 
         if(firstColumnElement == '-')
-            break;
+        {
+            if(i != 2)
+            {
+                continue;
+            }    
+            else
+                break;
+        }
         int j;
         for(j=1; j<3; j++)
         {
+            // print<<"first col element: "<<firstColumnElement<<" compared with "<<board[j][i]<<newline;
             if(firstColumnElement != board[j][i])
                 break;
         }
@@ -136,7 +159,7 @@ char checkResult(vector <vector<char>> &board)
             // found winner
             return firstColumnElement;
     }
-
+    // print<<"No winner along cols"<<newline;
     // diags
 
     char firstDiagonalElement = board[0][0];
@@ -153,7 +176,7 @@ char checkResult(vector <vector<char>> &board)
         if(i == 3)
             return firstDiagonalElement;
     }
-
+    // print<<"No winner along first diagonal  "<<newline;
     char secondDiagonalElement = board[0][2];
 
     if(secondDiagonalElement != '-')
@@ -168,8 +191,9 @@ char checkResult(vector <vector<char>> &board)
         if(i == 3)
             return secondDiagonalElement;
     }
+    // print<<"No winner along 2ns diagonal  "<<newline;
 
-    if(fullBoard == true) // no more 0's left, entire board has been filled.
+    if(fullBoard == true) // no more - left, entire board has been filled.
         return 'D';    
 
     return 'N';
@@ -284,11 +308,12 @@ void readMove(vector <vector<char>> &board)
         
 }
 
-void sendMove(vector <vector<char>> &board, int fd)
+int sendMove(vector <vector<char>> &board, int fd)
 {
+    print<<"Inside sendmove"<<newline;
     readMove(board);
-    char* message = new char[9];
-    int k=0;
+    char* message = new char[10];
+    int k=1;
     for(int i=0; i<3; i++)
     {
         for(int j=0; j<3; j++)
@@ -296,31 +321,82 @@ void sendMove(vector <vector<char>> &board, int fd)
             message[k++] = board[i][j];
         }
     }
+    char result = checkResult(board);
 
-    if(write(fd, message, 9) < 0)
+    // print<<"Player character: "<<playerCharacter<<" Opponent character: "<<opponentCharacter<<newline;
+
+    // print<<"Game result before sending the data: "<<result<<newline;
+
+    if(result == 'D')
+        message[0] = 'D';
+    else if(result == playerCharacter)
+        message[0] = playerCharacter;
+    else if(result == opponentCharacter)
+        message[0] = opponentCharacter;
+    else
+        message[0] = 'N';
+
+    if(write(fd, message, 10) < 0)
         error("WAS NOT ABLE TO SEND MOVE TO CLIENT.");
     
     delete message;
+
+    gameResult = result;
+    
+    if(gameResult == 'N')
+        return NO_RESULT;
+    else
+        return GAME_OVER;
 }
 
-void receiveMove(vector <vector<char>> &board, int fd)
+int receiveMove(vector <vector<char>> &board, int fd)
 {
-    char buffer[9];
-    if(c_libs::read(fd,buffer,9) < 0)
+    // cout<<"Inside receivemove"<<newline;
+    char buffer[10];
+    if(c_libs::read(fd,buffer,10) < 0)
         error("ERROR RECEIVING MOVE FROM CLIENT");
 
     // update the board
     int rowNum = 0, colNum = 0;
 
-    for(int i=0; i<9; i++)
+    for(int i=1; i<10; i++)
     {    
-        rowNum = int(i/3);
-        colNum = i - 3*rowNum;
+        rowNum = int((i-1)/3);
+        colNum = i - 1 - 3*rowNum;
+        print<<rowNum<<" "<<colNum<<newline;
+
         board[rowNum][colNum] = buffer[i];
     }
+    
+    // print<<"Game result: "<<buffer[0]<<newline;
 
-    print<<newline<<newline<<"Opponent has made their move. Here is the updated board!"<<newline;
-    displayBoard(board);
+    if(buffer[0] == playerCharacter)
+    { 
+        displayBoard(board);
+        print<<"You won!"<<newline;
+    }
+    else if(buffer[0] == opponentCharacter)
+    {
+        displayBoard(board);
+        print<<"You lost! :("<<newline;
+    }
+    else if(buffer[0] == 'D')
+    {
+        displayBoard(board);
+        print<<"Draw match!"<<newline;
+    }
+    else
+    {
+        print<<newline<<newline<<"Opponent has made their move. Here is the updated board!"<<newline;
+        displayBoard(board);
+    }
+
+    gameResult = buffer[0];  
+
+    if(buffer[0] == 'N')
+        return NO_RESULT;
+    else
+        return GAME_OVER;
 }
 
 void displayRules(int firstMove)
@@ -329,12 +405,14 @@ void displayRules(int firstMove)
     {
         print<<"You are playing first! Your character is X."<< newline;
         playerCharacter = 'X';
+        opponentCharacter = 'O';
         message = "2";
     }
     else
     {
         print<<"You are playing second! Your character is O."<< newline;
         playerCharacter = 'O';
+        opponentCharacter = 'X';
         message = "1";
     }
     print<<"To play, you must enter the position number (1-9) of the location where you want to place your piece."<< newline
@@ -345,6 +423,14 @@ void displayRules(int firstMove)
 
 void startGame(vector <vector<char>> &board)
 {
+    // vector <vector<char>> testBoard = {
+    //     {'O', '-', 'X'},
+    //     {'O', '-', 'X'},
+    //     {'-', '-', 'X'}
+    // };
+
+    //print<<checkResult(testBoard);
+
     int firstMove = int((rand()%2 + 1));
     
     print<<newline<<newline;
@@ -390,28 +476,60 @@ void startGame(vector <vector<char>> &board)
         
         if(firstMove == FIRST_MOVE_CLIENT)
         {
+            /*
             while(checkResult(board) == 'N') // no result yet
             {
                 receiveMove(board, acceptfd);
                 sendMove(board, acceptfd);
+            }
+            */
+            while(1)
+            {
+                int receiveResult = receiveMove(board, acceptfd);
+                // print<<"Receive result : "<<receiveResult<<newline;
+                if(receiveResult == GAME_OVER)
+                    break;
+                int sendResult = sendMove(board, acceptfd);
+                // print<<"Send result: "<<sendResult<<newline;
+                if(sendResult == GAME_OVER)
+                    break;
             }
         }
         else
         {
+            /*
             while(checkResult(board) == 'N') // no result yet
             {
                 sendMove(board, acceptfd);
                 receiveMove(board, acceptfd);
             }
+            */
+            while(1)
+            {
+                int sendResult = sendMove(board, acceptfd);
+                // print<<"Send result: "<<sendResult<<newline;
+                if(sendResult == GAME_OVER)
+                    break;
+                int receiveResult = receiveMove(board, acceptfd);
+                // print<<"Receive result : "<<receiveResult<<newline;
+                if(receiveResult == GAME_OVER)
+                    break;
+            }
+
         }
 
-        char result = checkResult(board);
-        if(result == playerCharacter)
-            print<<"Congrats! You won!! "<<newline<<newline;
-        else if(result == 'D')
-            print<<"Draw match. "<<newline<<newline;
+        // char result = checkResult(board);
+        // if(result == playerCharacter)
+        //     print<<"Congrats! You won!! "<<newline<<newline;
+        // else if(result == 'D')
+        //     print<<"Draw match. "<<newline<<newline;
+        // else
+        //     print<<"You lost :( "<<newline<<newline;
+
+        if(gameResult == playerCharacter)
+            print<<"Congrats!, You won :D"<<newline;
         else
-            print<<"You lost :( "<<newline<<newline;
+            print<<"You lost :("<<newline;
         
         print<<"Waiting for response from client..."<<newline;
 
@@ -502,28 +620,41 @@ void joinGame(vector <vector<char>> &board)
 
         if(firstMove == CLIENT_GOES_FIRST)
         {
-            while(checkResult(board) == 'N')
+            while (1)
             {
-                sendMove(board, sockfd);
-                receiveMove(board, sockfd);
+                int sendResult = sendMove(board, sockfd);
+                // print<<"Send result: "<<sendResult<<newline;
+                if(sendResult == GAME_OVER)
+                    break;
+                int receiveResult = receiveMove(board, sockfd);
+
+                // print<<"Receive result : "<<receiveResult<<newline;
+                if(receiveResult == GAME_OVER)
+                    break;
             }
         }
         else
         {
-            while(checkResult(board) == 'N')
+            while (1)
             {
-                receiveMove(board, sockfd);
-                sendMove(board, sockfd);
-            }   
+                int receiveResult = receiveMove(board, sockfd);
+                // print<<"Receive result : "<<receiveResult<<newline;
+                if(receiveResult == GAME_OVER)
+                    break;
+                int sendResult = sendMove(board, sockfd);
+                // print<<"Send result: "<<sendResult<<newline;
+                if(sendResult == GAME_OVER)
+                    break;
+            }
         }
 
-        char result = checkResult(board);
-        if(result == playerCharacter)
-            print<<"Congrats! You won!! "<<newline<<newline;
-        else if(result == 'D')
-            print<<"Draw match. "<<newline<<newline;
-        else
-            print<<"You lost :( "<<newline<<newline;
+        // char result = checkResult(board);
+        // if(result == playerCharacter)
+        //     print<<"Congrats! You won!! "<<newline<<newline;
+        // else if(result == 'D')
+        //     print<<"Draw match. "<<newline<<newline;
+        // else
+        //     print<<"You lost :( "<<newline<<newline;
 
         // indicate if client wants to play another game
 
