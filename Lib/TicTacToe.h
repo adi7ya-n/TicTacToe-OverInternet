@@ -49,8 +49,11 @@ char opponentCharacter = '-';
 char gameResult = 'N';
 int sockfd, acceptfd;
 
-const char * gameOver = "E";
+const char* gameOver = "E"; // Exit
+const char* rematch = "R"; 
 const char* message;
+
+bool newOpponent = true;
 
 using namespace std;
 using namespace c_libs;
@@ -59,6 +62,20 @@ void error(const char *msg)
 {
     perror(msg);
     exit(1);
+}
+
+void clearScreen()
+{
+    print<< "\033[2J\033[1;1H";
+}
+
+void clearBoard(vector <vector<char>> &board)
+{
+    for(int i=0; i<3; i++)
+    {
+        for(int j=0; j<3; j++)
+            board[i][j] = '-';
+    }
 }
 
 void displayBoard(vector <vector<char>> board)
@@ -310,7 +327,7 @@ void readMove(vector <vector<char>> &board)
 
 int sendMove(vector <vector<char>> &board, int fd)
 {
-    print<<"Inside sendmove"<<newline;
+    // print<<"Inside sendmove"<<newline;
     readMove(board);
     char* message = new char[10];
     int k=1;
@@ -373,17 +390,17 @@ int receiveMove(vector <vector<char>> &board, int fd)
     if(buffer[0] == playerCharacter)
     { 
         displayBoard(board);
-        print<<"You won!"<<newline;
+        // print<<"You won!"<<newline;
     }
     else if(buffer[0] == opponentCharacter)
     {
         displayBoard(board);
-        print<<"You lost! :("<<newline;
+        // print<<"You lost! :("<<newline;
     }
     else if(buffer[0] == 'D')
     {
         displayBoard(board);
-        print<<"Draw match!"<<newline;
+        // print<<"Draw match!"<<newline;
     }
     else
     {
@@ -431,9 +448,10 @@ void startGame(vector <vector<char>> &board)
 
     //print<<checkResult(testBoard);
 
-    int firstMove = int((rand()%2 + 1));
+    // int firstMove = int((rand()%2 + 1));
     
     print<<newline<<newline;
+    clearScreen();
     
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serv_addr, cli_addr;
@@ -461,8 +479,13 @@ void startGame(vector <vector<char>> &board)
         if(acceptfd < 0)
             error("ERROR ON ACCEPT");
 
-        print<<"Connected to player!"<<newline;
+        if(newOpponent)
+            print<<"Connected to player!"<<newline;
+        else
+            print<<"Rematching!"<<newline;
 
+        int firstMove = int((rand()%2 + 1));
+        
         displayRules(firstMove);
         // send information of first move to the client.
     
@@ -472,7 +495,7 @@ void startGame(vector <vector<char>> &board)
             error("ERROR IN SENDING FIRST MOVE TO CLIENT.");
 
         
-        print<<"My first move is: "<<firstMove<<newline;
+        // print<<"My first move is: "<<firstMove<<newline;
         
         if(firstMove == FIRST_MOVE_CLIENT)
         {
@@ -528,8 +551,10 @@ void startGame(vector <vector<char>> &board)
 
         if(gameResult == playerCharacter)
             print<<"Congrats!, You won :D"<<newline;
-        else
+        else if(gameResult == opponentCharacter)
             print<<"You lost :("<<newline;
+        else
+            print<<"Draw match."<<newline;
         
         print<<"Waiting for response from client..."<<newline;
 
@@ -559,6 +584,7 @@ void startGame(vector <vector<char>> &board)
             // client dont want to play, close the tcp connection and exit the program.
             close(acceptfd);
             close(sockfd);
+            newOpponent = true;
             print<<"Searching for new opponent..."<<newline;
         }
         else
@@ -572,7 +598,15 @@ void startGame(vector <vector<char>> &board)
                 close(sockfd);
                 exit(0);
             }
+
+            else
+            {
+                write(acceptfd, rematch, 1);
+                newOpponent = false;
+            }
         }
+        clearBoard(board);
+        clearScreen();
     }
 }
 
@@ -597,6 +631,8 @@ void joinGame(vector <vector<char>> &board)
     bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
     serv_addr.sin_port = htons(PORT_NUMBER);
 
+    clearScreen();
+
     while(1)
     {
         if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
@@ -614,7 +650,7 @@ void joinGame(vector <vector<char>> &board)
 
         displayRules(firstMove);
 
-        print<<"My first move is: "<<firstMove<<newline;
+        // print<<"My first move is: "<<firstMove<<newline;
 
         // if client gets 2, then receive the move
 
@@ -649,12 +685,12 @@ void joinGame(vector <vector<char>> &board)
         }
 
         // char result = checkResult(board);
-        // if(result == playerCharacter)
-        //     print<<"Congrats! You won!! "<<newline<<newline;
-        // else if(result == 'D')
-        //     print<<"Draw match. "<<newline<<newline;
-        // else
-        //     print<<"You lost :( "<<newline<<newline;
+        if(gameResult == playerCharacter)
+            print<<"Congrats! You won!! "<<newline<<newline;
+        else if(gameResult == opponentCharacter)
+            print<<"You lost :( "<<newline<<newline;
+        else
+            print<<"Draw match. "<<newline<<newline;
 
         // indicate if client wants to play another game
 
@@ -675,7 +711,7 @@ void joinGame(vector <vector<char>> &board)
         if(write(sockfd, buffer, 1) < 0)
             error("ERROR SENDING REMATCH DECISION TO THE HOST");
         
-        close(sockfd); // close connection
+        // close(sockfd); // close connection
 
         if(decision == 'y' or decision == 'Y')
         {
@@ -693,8 +729,12 @@ void joinGame(vector <vector<char>> &board)
             {
                 print<<"Server wants to play another game. Continuing..."<<newline;
                 close(sockfd);
+                sleep(1);
+                sockfd = socket(AF_INET, SOCK_STREAM, 0);
+                clearBoard(board);
             }
         }
+        clearScreen();
     }
 
 }
